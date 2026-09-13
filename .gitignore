@@ -1,0 +1,5 @@
+# test artifacts (keep scripts, ignore logs)
+_smoke.log
+node_modules/
+*.zip
+.DS_Store

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>IFS Atlas · 迭代函数系统分形浏览器</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#1f2329; --sub:#6b7280;
+    --line:#e6e8eb; --accent:#2f6df6; --accent-ink:#ffffff;
+    --good:#1a9e57; --warn:#d98a00; --bad:#d94b4b;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px;line-height:1.5}
+  header{padding:18px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{margin:0;font-size:18px;letter-spacing:.2px}
+  header p{margin:4px 0 0;color:var(--sub);font-size:12.5px}
+  .wrap{display:flex;gap:16px;padding:16px 22px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .controls{width:300px;flex:0 0 auto}
+  .stage{flex:1 1 480px;min-width:340px}
+  .row{margin:10px 0}
+  label{display:block;font-size:12px;color:var(--sub);margin-bottom:4px}
+  select,input[type=number]{width:100%;padding:7px 9px;border:1px solid var(--line);
+    border-radius:8px;background:#fff;color:var(--ink);font-size:13px}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  button{cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);
+    padding:8px 12px;border-radius:8px;font-size:13px;transition:.12s}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  button.primary:hover{filter:brightness(1.05);color:#fff}
+  canvas{width:100%;height:auto;display:block;background:#0b0e14;border:1px solid var(--line);
+    border-radius:10px;aspect-ratio:760/540}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+  .stat{background:#fafbfc;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .stat .k{font-size:11px;color:var(--sub)}
+  .stat .v{font-size:14px;font-family:var(--mono);margin-top:2px}
+  details{margin-top:8px}
+  summary{cursor:pointer;color:var(--accent);font-size:13px}
+  table{border-collapse:collapse;width:100%;margin-top:8px;font-size:12px}
+  th,td{border:1px solid var(--line);padding:4px 6px;text-align:center}
+  th{background:#fafbfc;color:var(--sub);font-weight:600}
+  td input{width:62px;padding:3px 4px;border:1px solid var(--line);border-radius:5px;
+    font-size:12px;text-align:center;background:#fff;color:var(--ink)}
+  .note{color:var(--sub);font-size:12px;margin-top:10px}
+  .tag{display:inline-block;font-size:11px;color:var(--accent);border:1px solid var(--line);
+    border-radius:20px;padding:1px 9px;margin-left:6px}
+  .err{color:var(--bad);font-size:12px;margin-top:8px;min-height:16px}
+  code{font-family:var(--mono);background:#f0f2f5;padding:1px 5px;border-radius:5px;font-size:12px}
+  @media (max-width:760px){.controls{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>IFS Atlas <span class="tag">迭代函数系统</span></h1>
+  <p>用混沌游戏（chaos game）绘制仿射 IFS 吸引子 — 单文件 · 离线 · 种子可复现 · 彩色密度渲染</p>
+</header>
+
+<div class="wrap">
+  <div class="panel controls">
+    <div class="row">
+      <label>预设 (Preset)</label>
+      <select id="preset"></select>
+    </div>
+    <div class="row">
+      <label>迭代点数 (Iterations)</label>
+      <select id="iters">
+        <option value="50000">50,000</option>
+        <option value="150000" selected>150,000</option>
+        <option value="400000">400,000</option>
+        <option value="900000">900,000</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>随机种子 (Seed, 可复现)</label>
+      <input id="seed" type="number" value="12345" />
+    </div>
+    <div class="btns">
+      <button class="primary" id="render">渲染 (Render)</button>
+      <button id="surprise">随机一个 (Surprise me)</button>
+    </div>
+    <div class="btns">
+      <button id="reset">重置预设</button>
+      <button id="download">下载 PNG</button>
+    </div>
+    <div class="err" id="err"></div>
+    <details>
+      <summary>编辑变换矩阵 (Edit transforms)</summary>
+      <div id="tbl"></div>
+      <div class="btns">
+        <button id="addT">+ 增加变换</button>
+        <button id="applyT">应用并渲染</button>
+      </div>
+      <div class="note">每个变换：x' = a·x + b·y + e，y' = c·x + d·y + f，p 为被选中概率（自动归一化）。</div>
+    </details>
+    <div class="note">提示：相同预设 + 相同种子永远得到完全相同的图。改种子可换一种随机走法。</div>
+  </div>
+
+  <div class="panel stage">
+    <canvas id="cv" width="760" height="540"></canvas>
+    <div class="stats">
+      <div class="stat"><div class="k">点数</div><div class="v" id="sCount">—</div></div>
+      <div class="stat"><div class="k">变换数</div><div class="v" id="sT">—</div></div>
+      <div class="stat"><div class="k">包围盒</div><div class="v" id="sBox">—</div></div>
+      <div class="stat"><div class="k">渲染耗时</div><div class="v" id="sMs">—</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ ENGINE (DOM-free, testable) ============================ -->
+<script id="engine">
+(function(){
+  'use strict';
+
+  // Seeded PRNG: mulberry32. Same seed -> identical sequence (core of reproducibility).
+  function mulberry32(a){
+    a = a >>> 0;
+    return function(){
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function makeRng(seed){ return mulberry32(seed >>> 0); }
+
+  // Normalize probabilities to sum 1; equal split if all zero / missing.
+  function normProbs(ts){
+    let s = 0;
+    for (let i = 0; i < ts.length; i++) s += (ts[i].p > 0 ? ts[i].p : 0);
+    if (s <= 0){
+      const e = 1 / Math.max(1, ts.length);
+      return ts.map(function(t){ return e; });
+    }
+    return ts.map(function(t){ return (t.p > 0 ? t.p : 0) / s; });
+  }
+
+  // Apply one affine transform to a point.
+  function applyT(t, x, y){
+    return { x: t.a * x + t.b * y + t.e, y: t.c * x + t.d * y + t.f };
+  }
+
+  // Pick transform index by cumulative probability and a uniform draw r in [0,1).
+  function pickT(N, cdf, total, r){
+    let k = 0;
+    while (k < N - 1 && r > cdf[k] / total) k++;
+    return k;
+  }
+
+  // Chaotic iteration (chaos game). Deterministic given (ts, n, seed).
+  // Returns { pts:Float64Array(2n), owner:Uint8Array(n), count, nTrans, bbox }.
+  function chaosGame(ts, n, seed, warmup, sx, sy){
+    n = n | 0; if (n < 1) n = 1;
+    warmup = warmup || 20;
+    const rng = mulberry32(seed >>> 0);
+    const N = ts.length;
+    const cdf = new Float64Array(N);
+    let sum = 0;
+    for (let i = 0; i < N; i++){ sum += (ts[i].p > 0 ? ts[i].p : 0); cdf[i] = sum; }
+    const total = sum > 0 ? sum : 1;
+    const pts = new Float64Array(n * 2);
+    const owner = new Uint8Array(n);
+    let x = (sx == null ? 0 : sx), y = (sy == null ? 0 : sy);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i < warmup; i++){
+      const r = rng(); let k = 0;
+      while (k < N - 1 && r > cdf[k] / total) k++;
+      const t = ts[k];
+      const nx = t.a * x + t.b * y + t.e;
+      const ny = t.c * x + t.d * y + t.f;
+      x = nx; y = ny;
+    }
+    for (let i = 0; i < n; i++){
+      const r = rng(); let k = 0;
+      while (k < N - 1 && r > cdf[k] / total) k++;
+      const t = ts[k];
+      const nx = t.a * x + t.b * y + t.e;
+      const ny = t.c * x + t.d * y + t.f;
+      x = nx; y = ny;
+      pts[i * 2] = x; pts[i * 2 + 1] = y; owner[i] = k;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    return { pts: pts, owner: owner, count: n, nTrans: N,
+             bbox: { minX: minX, minY: minY, maxX: maxX, maxY: maxY } };
+  }
+
+  function bboxOf(res){
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const p = res.pts;
+    for (let i = 0; i < p.length; i += 2){
+      const x = p[i], y = p[i + 1];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
+  }
+
+  // Stable hash of a points array (for determinism checks).
+  function hashPts(pts, cap){
+    const n = pts.length; const lim = cap ? Math.min(cap, n) : n;
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < lim; i++){
+      h ^= (Math.floor(pts[i] * 1000) & 0xff);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  // Centroid of points (for shape sanity checks).
+  function centroid(pts){
+    let sx = 0, sy = 0; const m = pts.length / 2;
+    for (let i = 0; i < pts.length; i += 2){ sx += pts[i]; sy += pts[i + 1]; }
+    return { x: sx / m, y: sy / m };
+  }
+
+  function hslToRgb(h, s, l){
+    h = ((h % 1) + 1) % 1;
+    let r, g, b;
+    if (s === 0){ r = g = b = l; }
+    else {
+      const hue2rgb = function(p, q, t){
+        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1/3);
+    }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  }
+
+  // Random system generator (used by "Surprise me").
+  function randomTransforms(rng){
+    const N = 2 + Math.floor(rng() * 3); // 2..4
+    const ts = [];
+    for (let i = 0; i < N; i++){
+      const ang = rng() * Math.PI * 2;
+      const s = 0.35 + rng() * 0.55;
+      ts.push({
+        a: Math.cos(ang) * s, b: -Math.sin(ang) * s,
+        c: Math.sin(ang) * s, d: Math.cos(ang) * s,
+        e: (rng() - 0.5) * 2.2, f: (rng() - 0.5) * 2.2,
+        p: 0.2 + rng() * 0.6
+      });
+    }
+    return ts;
+  }
+
+  function cloneSys(ts){ return ts.map(function(t){ return Object.assign({}, t); }); }
+
+  const PRESETS = {
+    'Barnsley Fern': [
+      { a: 0,     b: 0,     c: 0,     d: 0.16,  e: 0,    f: 0,    p: 0.01 },
+      { a: 0.85,  b: 0.04,  c: -0.04, d: 0.85,  e: 0,    f: 1.6,  p: 0.85 },
+      { a: 0.2,   b: -0.26, c: 0.23,  d: 0.22,  e: 0,    f: 1.6,  p: 0.07 },
+      { a: -0.15, b: 0.28,  c: 0.26,  d: 0.24,  e: 0,    f: 0.44, p: 0.07 }
+    ],
+    'Sierpinski Triangle': [
+      { a: 0.5, b: 0, c: 0, d: 0.5, e: 0,    f: 0,     p: 1/3 },
+      { a: 0.5, b: 0, c: 0, d: 0.5, e: 0.5,  f: 0,     p: 1/3 },
+      { a: 0.5, b: 0, c: 0, d: 0.5, e: 0.25, f: 0.433, p: 1/3 }
+    ],
+    'Heighway Dragon': [
+      { a: 0.5,  b: -0.5, c: 0.5,  d: 0.5,  e: 0, f: 0, p: 0.5 },
+      { a: -0.5, b: -0.5, c: 0.5,  d: -0.5, e: 1, f: 0, p: 0.5 }
+    ],
+    'Levy C Curve': [
+      { a: 0.5, b: -0.5, c: 0.5,  d: 0.5,  e: 0,   f: 0,   p: 0.5 },
+      { a: 0.5, b: 0.5,  c: -0.5, d: 0.5,  e: 0.5, f: 0.5, p: 0.5 }
+    ],
+    'Fractal Tree': [
+      { a: 0,    b: 0,    c: 0,    d: 0.5,  e: 0,    f: 0,    p: 0.05 },
+      { a: 0.1,  b: -0.5, c: 0.5,  d: 0.1,  e: 0,    f: 0.3,  p: 0.15 },
+      { a: 0.1,  b: 0.5,  c: -0.5, d: 0.1,  e: 0,    f: 0.35, p: 0.15 },
+      { a: 0.85, b: 0,    c: 0,    d: 0.85, e: 0,    f: 0.4,  p: 0.65 }
+    ],
+    'Spiral Web': [
+      { a: 0.7,  b: -0.3, c: 0.3,  d: 0.7,  e: 0,   f: 0,   p: 0.5 },
+      { a: 0.3,  b: 0.7,  c: -0.7, d: 0.3,  e: 0.6, f: 0.4, p: 0.5 }
+    ]
+  };
+
+  const IFS = {
+    mulberry32: mulberry32, makeRng: makeRng, normProbs: normProbs,
+    applyT: applyT, pickT: pickT, chaosGame: chaosGame, bboxOf: bboxOf,
+    hashPts: hashPts, centroid: centroid, hslToRgb: hslToRgb,
+    randomTransforms: randomTransforms, cloneSys: cloneSys, PRESETS: PRESETS
+  };
+
+  if (typeof window !== 'undefined') window.IFS = IFS;
+  if (typeof globalThis !== 'undefined') globalThis.IFS = IFS;
+  if (typeof module !== 'undefined' && module.exports) module.exports = IFS;
+})();
+</script>
+
+<!-- ============================ UI (DOM, guarded for vm) ============================ -->
+<script id="ui">
+(function(){
+  'use strict';
+  if (typeof document === 'undefined') return; // skip under Node/vm
+
+  const IFS = (typeof window !== 'undefined' && window.IFS) || null;
+  if (!IFS) return;
+
+  const $ = function(id){ return document.getElementById(id); };
+  const cv = $('cv');
+  const ctx2 = cv.getContext('2d');
+
+  let state = { sys: IFS.cloneSys(IFS.PRESETS['Barnsley Fern']) };
+
+  function fillPresets(){
+    const sel = $('preset');
+    Object.keys(IFS.PRESETS).forEach(function(name){
+      const o = document.createElement('option');
+      o.value = name; o.textContent = name; sel.appendChild(o);
+    });
+    sel.value = 'Barnsley Fern';
+    sel.addEventListener('change', function(){
+      state.sys = IFS.cloneSys(IFS.PRESETS[sel.value]);
+      buildTable(); render();
+    });
+  }
+
+  function buildTable(){
+    const host = $('tbl');
+    host.innerHTML = '';
+    const keys = ['a','b','c','d','e','f','p'];
+    const table = document.createElement('table');
+    const thead = document.createElement('tr');
+    thead.innerHTML = '<th>#</th>' + keys.map(function(k){ return '<th>' + k + '</th>'; }).join('');
+    table.appendChild(thead);
+    state.sys.forEach(function(t, i){
+      const tr = document.createElement('tr');
+      let html = '<td>' + (i + 1) + '</td>';
+      keys.forEach(function(k){
+        html += '<td><input data-i="' + i + '" data-k="' + k + '" value="' +
+                (Math.round(t[k] * 1e5) / 1e5) + '"></td>';
+      });
+      tr.innerHTML = html;
+      table.appendChild(tr);
+    });
+    host.appendChild(table);
+    host.querySelectorAll('input').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        const i = +inp.dataset.i, k = inp.dataset.k;
+        const v = parseFloat(inp.value);
+        if (!isFinite(v)){ $('err').textContent = '系数必须是数字'; return; }
+        state.sys[i][k] = v;
+      });
+    });
+  }
+
+  function render(){
+    const iters = parseInt($('iters').value, 10) || 150000;
+    const seed = (parseInt($('seed').value, 10) || 0) >>> 0;
+    if (!state.sys.length){ $('err').textContent = '至少需要一个变换'; return; }
+    $('err').textContent = '';
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const res = IFS.chaosGame(state.sys, iters, seed, 20, 0, 0);
+    const t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    draw(res);
+    $('sCount').textContent = res.count.toLocaleString();
+    $('sT').textContent = res.nTrans;
+    const b = res.bbox;
+    $('sBox').textContent = (isFinite(b.maxX) ? (Math.round((b.maxX - b.minX) * 100) / 100) + '×' +
+      (Math.round((b.maxY - b.minY) * 100) / 100) : '—');
+    $('sMs').textContent = (Math.round((t1 - t0) * 10) / 10) + ' ms';
+  }
+
+  function draw(res){
+    const W = cv.width, H = cv.height;
+    const b = res.bbox;
+    const w = (b.maxX - b.minX) || 1, h = (b.maxY - b.minY) || 1;
+    const m = 10;
+    const sc = Math.min((W - 2 * m) / w, (H - 2 * m) / h);
+    const drawW = w * sc, drawH = h * sc;
+    const originX = (W - drawW) / 2 - b.minX * sc;
+    const originY = (H - drawH) / 2 + b.maxY * sc; // y flipped
+    const N = res.nTrans;
+    const cols = [];
+    for (let i = 0; i < N; i++) cols.push(IFS.hslToRgb((i / N) * 0.83 + 0.02, 0.85, 0.6));
+    const buf = new Float32Array(W * H * 3);
+    const p = res.pts, own = res.owner;
+    for (let i = 0; i < res.count; i++){
+      const px = (originX + p[i * 2] * sc) | 0;
+      const py = (originY - p[i * 2 + 1] * sc) | 0;
+      if (px < 0 || px >= W || py < 0 || py >= H) continue;
+      const c = cols[own[i]];
+      const idx = (py * W + px) * 3;
+      buf[idx] += c[0]; buf[idx + 1] += c[1]; buf[idx + 2] += c[2];
+    }
+    let maxC = 0;
+    for (let i = 0; i < buf.length; i++) if (buf[i] > maxC) maxC = buf[i];
+    if (maxC <= 0) maxC = 1;
+    const img = ctx2.createImageData(W, H);
+    for (let i = 0; i < buf.length; i++){
+      img.data[i] = Math.pow(buf[i] / maxC, 0.55) * 255;
+    }
+    for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
+    ctx2.putImageData(img, 0, 0);
+  }
+
+  function surprise(){
+    const rng = IFS.makeRng((Math.random() * 1e9) >>> 0);
+    state.sys = IFS.randomTransforms(rng);
+    $('preset').value = $('preset').value; // keep selection
+    buildTable(); render();
+  }
+
+  function download(){
+    const a = document.createElement('a');
+    a.download = 'ifs-atlas.png';
+    a.href = cv.toDataURL('image/png');
+    a.click();
+  }
+
+  function init(){
+    fillPresets();
+    buildTable();
+    $('render').addEventListener('click', render);
+    $('surprise').addEventListener('click', surprise);
+    $('reset').addEventListener('click', function(){
+      state.sys = IFS.cloneSys(IFS.PRESETS[$('preset').value]); buildTable(); render();
+    });
+    $('download').addEventListener('click', download);
+    $('applyT').addEventListener('click', function(){
+      const clean = state.sys.filter(function(t){
+        return ['a','b','c','d','e','f'].every(function(k){ return isFinite(t[k]); });
+      });
+      if (clean.length < 1){ $('err').textContent = '无有效变换'; return; }
+      state.sys = clean; buildTable(); render();
+    });
+    $('addT').addEventListener('click', function(){
+      state.sys.push({ a: 0.5, b: 0, c: 0, d: 0.5, e: 0, f: 0, p: 0.5 });
+      buildTable();
+    });
+    render();
+  }
+
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
