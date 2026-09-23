@@ -1,5 +1,12 @@
 # IFS Atlas · 迭代函数系统分形浏览器
 
+<p align="center">
+  <a href="https://github.com/CJX0712/ifs-atlas/actions/workflows/ci.yml"><img src="https://github.com/CJX0712/ifs-atlas/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="https://github.com/CJX0712/ifs-atlas/releases"><img src="https://img.shields.io/github/v/release/CJX0712/ifs-atlas?sort=semver" alt="release"></a>
+  <a href="https://github.com/CJX0712/ifs-atlas/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CJX0712/ifs-atlas" alt="license"></a>
+  <img src="https://img.shields.io/badge/author-%E6%99%A8%E6%98%9F-1f6feb" alt="author">
+</p>
+
 一个**单文件、零依赖、纯离线**的网页工具，用混沌游戏（chaos game）算法绘制**仿射迭代函数系统（IFS）**的吸引子。
 
 > 同一个预设 + 同一个随机种子，永远得到**逐像素相同**的图。改种子只是换一种随机走法，形状不变。
